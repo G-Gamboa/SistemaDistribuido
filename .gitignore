@@ -1,0 +1,10 @@
+*.pyc
+__pycache__/
+*.log
+*.env
+*.ini.local
+*.swp
+.DS_Store
+/virtualenv/
+/server/config.ini
+/client/config.ini

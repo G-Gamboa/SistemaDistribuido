@@ -1,0 +1,4 @@
+mysql-connector-python==8.0.33
+cryptography==41.0.4
+configparser==5.3.0
+pyfiglet==0.8.post1  # Para interfaz bonita en cliente
