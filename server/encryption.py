@@ -1,45 +1,32 @@
 from cryptography.fernet import Fernet
 import base64
-import os
-from configparser import ConfigParser
 import logging
-from pathlib import Path
 
-# Configuración de logging
+# Configura logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-def load_config():
-    try:
-        config = ConfigParser()
-        config_file = Path(__file__).parent / 'config.ini'
-        
-        if not config_file.exists():
-            logger.error(f"Archivo de configuración no encontrado en: {config_file}")
-            raise FileNotFoundError(f"Config file not found at {config_file}")
-        
-        config.read(config_file)
-        
-        if not config.has_section('security'):
-            logger.error("La sección [security] no existe en config.ini")
-            raise KeyError("Missing [security] section in config")
-            
-        return config
-    except Exception as e:
-        logger.error(f"Error cargando configuración: {e}")
-        raise
+# Clave CORRECTA (la misma de tu config.ini)
+KEY_STR = '3iXvHvSAsUZBehzOSued-osDNnynApeLi9j-sAquPko='
 
 try:
-    config = load_config()
-    KEY = config['security']['encryption_key'].strip().encode()
+    # Paso 1: Verificar formato
+    if len(KEY_STR) != 44 or not KEY_STR.endswith('='):
+        raise ValueError("Formato de clave inválido")
     
-    # Validar la clave
-    if len(base64.urlsafe_b64decode(KEY)) != 32:
-        raise ValueError("La clave de encriptación debe tener 32 bytes en base64")
-        
-    cipher_suite = Fernet(base64.urlsafe_b64encode(KEY))
-    logger.info("Configuración de encriptación cargada correctamente")
+    # Paso 2: Codificar a bytes
+    KEY = KEY_STR.encode('ascii')
+    
+    # Paso 3: Validar con Fernet
+    Fernet(KEY)  # Esto lanzará error si la clave es inválida
+    
+    # Configuración exitosa
+    cipher_suite = Fernet(KEY)
+    logger.info("Encriptación configurada correctamente")
     
 except Exception as e:
-    logger.error(f"Error fatal en configuración de encriptación: {e}")
+    logger.error(f"Error fatal: {e}")
+    print(f"ERROR: {type(e).__name__}: {e}")
+    print(f"Clave usada: {KEY_STR}")
+    print(f"Longitud: {len(KEY_STR)} caracteres")
     raise
