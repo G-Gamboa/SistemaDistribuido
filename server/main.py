@@ -5,11 +5,31 @@ from message_handler import send_message, get_messages
 from logger import log_event
 import configparser
 import sys
+import os
+from pathlib import Path
 
-# Configuración
-config = configparser.ConfigParser()
-config.read('server/config.ini')
+# Configuración robusta
+def load_config():
+    config = configparser.ConfigParser()
+    config_file = Path(__file__).parent / 'config.ini'
+    
+    if not config_file.exists():
+        print(f"ERROR: No se encontró config.ini en {config_file}")
+        sys.exit(1)
+    
+    config.read(config_file)
+    
+    required_sections = ['server', 'mysql', 'security']
+    for section in required_sections:
+        if not config.has_section(section):
+            print(f"ERROR: Falta sección requerida [{section}] en config.ini")
+            sys.exit(1)
+    
+    return config
 
+config = load_config()
+
+# Configuración del servidor
 HOST = config['server']['host']
 PORT = int(config['server']['port'])
 MAX_CONNECTIONS = int(config['server']['max_connections'])
@@ -19,7 +39,6 @@ def handle_client(conn, addr):
     try:
         log_event("CONNECTION_ATTEMPT", details=f"IP: {addr[0]}")
         
-        # Fase de autenticación/registro
         action = conn.recv(1024).decode().strip()
         
         if action == "REGISTER":
@@ -50,13 +69,12 @@ def handle_client(conn, addr):
             conn.sendall(b'INVALID_ACTION')
             return
             
-        # Bucle principal de mensajes
         while True:
             command = conn.recv(1024).decode().strip()
             
             if command == "SEND":
                 recipient = conn.recv(1024).decode().strip()
-                encrypted_msg = conn.recv(4096)  # Mensaje cifrado
+                encrypted_msg = conn.recv(4096)
                 
                 if send_message(current_user, recipient, encrypted_msg):
                     conn.sendall(b'MESSAGE_SENT')
@@ -71,7 +89,7 @@ def handle_client(conn, addr):
                     for msg in messages:
                         formatted = f"{msg['sender']}|{msg['message']}|{msg['time']}"
                         conn.sendall(formatted.encode())
-                        conn.recv(1024)  # Esperar ACK
+                        conn.recv(1024)
                         
             elif command == "EXIT":
                 log_event("LOGOUT", current_user)
