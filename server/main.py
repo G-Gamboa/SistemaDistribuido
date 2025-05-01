@@ -49,7 +49,7 @@ def handle_client(conn, addr):
                 conn.sendall(b'REGISTER_SUCCESS\n')
                 log_event("REGISTER_SUCCESS", username)
             else:
-                conn.sendall(b'REGISTER_FAILED\n')
+                conn.sendall(b'REGISTER_FAILED: Usuario ya existe o error en BD\n')
                 log_event("REGISTER_FAILED", details=username)
             return
             
