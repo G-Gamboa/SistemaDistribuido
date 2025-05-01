@@ -8,7 +8,7 @@ logger = logging.getLogger(__name__)
 
 def create_connection():
     config = configparser.ConfigParser()
-    config.read('server/config.ini')
+    config.read('server/config/config.ini')
     
     try:
         connection = mysql.connector.connect(
@@ -16,7 +16,8 @@ def create_connection():
             database=config['mysql']['database'],
             user=config['mysql']['user'],
             password=config['mysql']['password'],
-            port=config['mysql']['port']
+            port=config['mysql']['port'],
+            autocommit=True
         )
         logger.info("Conexión a MySQL establecida correctamente")
         return connection
@@ -42,7 +43,7 @@ def execute_query(query, params=None, fetch=False):
             return cursor.rowcount
             
     except Error as e:
-        logger.error(f"Error en consulta SQL: {e}")
+        logger.error(f"Error en consulta: {query} - {e}")
         return None
     finally:
         if cursor:

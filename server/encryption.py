@@ -12,9 +12,9 @@ KEY = b'3iXvHvSAsUZBehzOSued-osDNnynApeLi9j-sAquPko='
 try:
     # Validación de la clave
     cipher_suite = Fernet(KEY)
-    logger.info("✅ Módulo de encriptación configurado correctamente")
+    logger.info("Módulo de encriptación configurado correctamente")
 except Exception as e:
-    logger.error(f"❌ Error configurando encriptación: {str(e)}")
+    logger.error(f"Error configurando encriptación: {str(e)}")
     raise
 
 # Funciones que deben ser accesibles desde otros módulos

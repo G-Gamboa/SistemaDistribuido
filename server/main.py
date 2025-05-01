@@ -11,7 +11,7 @@ from pathlib import Path
 # Configuración robusta
 def load_config():
     config = configparser.ConfigParser()
-    config_file = Path(__file__).parent / 'config.ini'
+    config_file = Path(__file__).parent / "config" / "config.ini"
     
     if not config_file.exists():
         print(f"ERROR: No se encontró config.ini en {config_file}")
@@ -49,7 +49,7 @@ def handle_client(conn, addr):
                 conn.sendall(b'REGISTER_SUCCESS\n')
                 log_event("REGISTER_SUCCESS", username)
             else:
-                conn.sendall(b'REGISTER_FAILED: Usuario ya existe o error en BD\n')
+                conn.sendall(b'REGISTER_FAILED\n')
                 log_event("REGISTER_FAILED", details=username)
             return
             

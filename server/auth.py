@@ -51,7 +51,7 @@ def register_user(username, password):
         )
         
         if not result:
-            raise Exception("No rows affected")
+            raise Exception("No se pudo insertar usuario")
             
         logger.info(f"Usuario {username} registrado exitosamente")
         return True
@@ -61,15 +61,21 @@ def register_user(username, password):
         return False
 
 def verify_user(username, password):
-    query = """
-    SELECT password_hash, salt FROM usuarios 
-    WHERE username = %s AND esta_activo = TRUE
-    """
-    user_data = execute_query(query, (username,), fetch=True)
-    
-    if not user_data or len(user_data) == 0:
-        return False
+    try:
+        user_data = execute_query(
+            "SELECT password_hash, salt FROM usuarios WHERE username = %s",
+            (username,),
+            fetch=True
+        )
         
-    stored_key = user_data[0]['password_hash']
-    stored_salt = user_data[0]['salt']
-    return verify_password(stored_salt, stored_key, password)
+        if not user_data:
+            return False
+            
+        return verify_password(
+            user_data[0]['salt'],
+            user_data[0]['password_hash'],
+            password
+        )
+    except Exception as e:
+        logger.error(f"Error en verificación: {e}")
+        return False
