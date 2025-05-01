@@ -1,4 +1,9 @@
+import sys
+import os
+from pathlib import Path
 import logging
+
+sys.path.append(str(Path(__file__).parent.parent))
 from client.core.auth import AuthManager
 from client.core.network import NetworkClient
 from client.ui.cli import CLInterface
