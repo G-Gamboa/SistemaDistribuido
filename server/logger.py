@@ -1,38 +1,24 @@
-from db import execute_query
-import socket
+import os
 import logging
-from datetime import datetime
+from pathlib import Path
+
+# Configurar directorio de logs
+LOG_DIR = Path(__file__).parent / "logs"
+LOG_FILE = LOG_DIR / "server.log"
+
+# Crear directorio si no existe
+os.makedirs(LOG_DIR, exist_ok=True)
 
 logging.basicConfig(
-    filename='server/logs/server.log',
+    filename=LOG_FILE,
     level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s'
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    filemode='a'  # Append mode
 )
 
 def log_event(event_type, username=None, details=""):
     try:
-        # 1. Siempre registrar en archivo log
-        logging.info(f"{event_type}|{username or 'system'}|{details}")
-        
-        # 2. Intentar registrar en MySQL
-        try:
-            user_id = None
-            if username:
-                user_data = execute_query(
-                    "SELECT id FROM usuarios WHERE username = %s", 
-                    (username,),
-                    fetch=True
-                )
-                user_id = user_data[0]['id'] if user_data else None
-            
-            execute_query(
-                """INSERT INTO logs 
-                (evento, usuario_id, detalles) 
-                VALUES (%s, %s, %s)""",
-                (event_type, user_id, str(details)[:500])
-              )  # Limitar longitud
-        except Exception as db_error:
-            logging.error(f"Error en BD al registrar log: {str(db_error)[:200]}")
-            
+        log_msg = f"{event_type} - User: {username or 'SYSTEM'} - Details: {details}"
+        logging.info(log_msg)
     except Exception as e:
-        print(f"ERROR CRÍTICO EN SISTEMA DE LOGS: {str(e)}")
+        print(f"FALLBACK LOG ERROR: {str(e)}")  # Fallback mínimo

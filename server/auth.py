@@ -33,18 +33,26 @@ def verify_password(stored_salt, stored_key, provided_password):
 
 def register_user(username, password):
     try:
-        salt, key = hash_password(password)
-        query = """
-        INSERT INTO usuarios 
-        (username, password_hash, salt, esta_activo) 
-        VALUES (%s, %s, %s, TRUE)
-        """
-        result = execute_query(query, (username, key.hex(), salt.hex()))
+        # Verificar si el usuario ya existe primero
+        existing_user = execute_query(
+            "SELECT id FROM usuarios WHERE username = %s",
+            (username,),
+            fetch=True
+        )
         
-        if result is None or result == 0:
-            logger.error("Error: No se pudo registrar el usuario (consunta no ejecutada)")
+        if existing_user:
+            logger.warning(f"Intento de registrar usuario existente: {username}")
             return False
+            
+        salt, key = hash_password(password)
+        result = execute_query(
+            "INSERT INTO usuarios (username, password_hash, salt) VALUES (%s, %s, %s)",
+            (username, key.hex(), salt.hex())
+        )
         
+        if not result:
+            raise Exception("No rows affected")
+            
         logger.info(f"Usuario {username} registrado exitosamente")
         return True
         
