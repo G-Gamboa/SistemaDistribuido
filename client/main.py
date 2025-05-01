@@ -24,35 +24,30 @@ def setup_logging():
 
 def main():
     # Configuración inicial
-    import sys
-    import io
-    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
-    sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8')
-    
     setup_logging()
     logger = logging.getLogger(__name__)
     
     try:
-        # Cargar configuración
-        config = load_config()
+        logger.info("Iniciando cliente...")
         
-        # Inicializar componentes
-        network_client = NetworkClient(
-            host=config['server']['host'],
-            port=int(config['server']['port'])
-        )
+        # Inicializa NetworkClient sin parámetros (ya carga config.ini internamente)
+        network_client = NetworkClient()
         
+        # Intenta conectar automáticamente
+        if not network_client.connect():
+            logger.error("No se pudo conectar al servidor")
+            return
+            
         auth_manager = AuthManager(network_client)
         cli = CLInterface(auth_manager, network_client)
         
-        # Iniciar interfaz
-        logger.info("Iniciando cliente...")
+        # Inicia la interfaz
         cli.show_main_menu()
         
     except Exception as e:
-        logger.error(f"Error fatal: {str(e)}")
+        logger.error(f"Error fatal: {str(e)}", exc_info=True)
     finally:
-        if network_client.connected:
+        if 'network_client' in locals() and network_client.connected:
             network_client.disconnect()
         logger.info("Cliente terminado")
 
