@@ -32,14 +32,25 @@ def verify_password(stored_salt, stored_key, provided_password):
         return False
 
 def register_user(username, password):
-    salt, key = hash_password(password)
-    query = """
-    INSERT INTO usuarios 
-    (username, password_hash, salt, esta_activo) 
-    VALUES (%s, %s, %s, TRUE)
-    """
-    result = execute_query(query, (username, key, salt))
-    return result is not None and result > 0
+    try:
+        salt, key = hash_password(password)
+        query = """
+        INSERT INTO usuarios 
+        (username, password_hash, salt, esta_activo) 
+        VALUES (%s, %s, %s, TRUE)
+        """
+        result = execute_query(query, (username, key.hex(), salt.hex()))
+        
+        if result is None or result == 0:
+            logger.error("Error: No se pudo registrar el usuario (consunta no ejecutada)")
+            return False
+        
+        logger.info(f"Usuario {username} registrado exitosamente")
+        return True
+        
+    except Exception as e:
+        logger.error(f"Error en registro: {str(e)}")
+        return False
 
 def verify_user(username, password):
     query = """

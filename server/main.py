@@ -46,10 +46,10 @@ def handle_client(conn, addr):
             password = conn.recv(1024).decode().strip()
             
             if register_user(username, password):
-                conn.sendall(b'REGISTER_SUCCESS')
+                conn.sendall(b'REGISTER_SUCCESS\n')
                 log_event("REGISTER_SUCCESS", username)
             else:
-                conn.sendall(b'REGISTER_FAILED')
+                conn.sendall(b'REGISTER_FAILED: Usuario ya existe o error en BD\n')
                 log_event("REGISTER_FAILED", details=username)
             return
             
