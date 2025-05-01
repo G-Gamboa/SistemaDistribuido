@@ -16,7 +16,7 @@ class CLInterface:
             print("1. Conectar al servidor")
             print("2. Registrarse")
             print("3. Iniciar sesión")
-            print("4. Salir")
+            print("4. Salir\n")
             
             choice = input("Seleccione una opción: ")
             

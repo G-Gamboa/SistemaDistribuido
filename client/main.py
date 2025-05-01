@@ -11,17 +11,24 @@ from client.config.config import load_config
 
 def setup_logging():
     """Configura el sistema de logging"""
+    log_file = Path(__file__).parent / 'client.log'
     logging.basicConfig(
         level=logging.INFO,
         format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
         handlers=[
-            logging.FileHandler('client.log'),
+            logging.FileHandler(log_file, encoding='utf-8'),
             logging.StreamHandler()
-        ]
+        ],
+        encoding='utf-8'  # Solo para Python 3.9+
     )
 
 def main():
     # Configuración inicial
+    import sys
+    import io
+    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
+    sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8')
+    
     setup_logging()
     logger = logging.getLogger(__name__)
     
