@@ -7,19 +7,25 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 def hash_password(password):
-    salt = os.urandom(32)
+    """Hash a password with a new salt"""
+    salt = os.urandom(32)  # Genera un salt aleatorio
     key = hashlib.pbkdf2_hmac(
         'sha256',
         password.encode('utf-8'),
         salt,
         100000
     )
+    # Devuelve los valores en hexadecimal como strings
     return salt.hex(), key.hex()
 
 def verify_password(stored_salt, stored_key, provided_password):
+    """Verify a stored password against one provided by user"""
     try:
+        # Convierte los hex strings de vuelta a bytes
         salt = bytes.fromhex(stored_salt)
         stored_key_bytes = bytes.fromhex(stored_key)
+        
+        # Genera el hash con la contraseña proporcionada
         new_key = hashlib.pbkdf2_hmac(
             'sha256',
             provided_password.encode('utf-8'),
@@ -32,8 +38,9 @@ def verify_password(stored_salt, stored_key, provided_password):
         return False
 
 def register_user(username, password):
+    """Register a new user with hashed password"""
     try:
-        # Verificar si el usuario ya existe primero
+        # Verificar si el usuario ya existe
         existing_user = execute_query(
             "SELECT id FROM usuarios WHERE username = %s",
             (username,),
@@ -44,10 +51,13 @@ def register_user(username, password):
             logger.warning(f"Intento de registrar usuario existente: {username}")
             return False
             
+        # Obtener salt y hash (ya en formato hex)
         salt, key = hash_password(password)
+        
+        # Insertar en la base de datos (sin convertir a hex nuevamente)
         result = execute_query(
             "INSERT INTO usuarios (username, password_hash, salt) VALUES (%s, %s, %s)",
-            (username, key.hex(), salt.hex())
+            (username, key, salt)  # Ya son strings hex, no necesitan .hex()
         )
         
         if not result:
@@ -61,6 +71,7 @@ def register_user(username, password):
         return False
 
 def verify_user(username, password):
+    """Verify user credentials"""
     try:
         user_data = execute_query(
             "SELECT password_hash, salt FROM usuarios WHERE username = %s",
