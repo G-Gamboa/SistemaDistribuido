@@ -38,6 +38,7 @@ def handle_client(conn, addr):
     current_user = None
     try:
         log_event("CONNECTION_ATTEMPT", details=f"IP: {addr[0]}")
+        conn.sendall(b"WELCOME AppMensajeria v1.0\n")
         
         action = conn.recv(1024).decode().strip()
         
