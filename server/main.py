@@ -127,25 +127,25 @@ def handle_client(conn, addr):
                 except Exception as e:
                     print(f"[ERROR] Error al enviar mensajes: {str(e)}")
                     conn.sendall(b"ERROR\n")    
-
             elif command == "LOGOUT":
                 try:
                     print(f"[SERVER] Procesando logout para {current_user}")
                     log_event("USER_LOGOUT", current_user)
                     
-                    # Confirmar cierre de sesión
+                    # Enviar confirmación inmediata
                     conn.sendall(b"LOGOUT_SUCCESS\n")
-                    current_user = None  # Limpiar usuario actual
+                    print(f"[SERVER] Confirmación enviada para {current_user}")
                     
-                    # Opcional: Esperar confirmación del cliente
-                    ack = conn.recv(3).decode().strip()
-                    if ack == "ACK":
-                        print(f"[SERVER] Logout confirmado para {current_user}")
+                    current_user = None  # Limpiar usuario actual
+                    return  # Opcional: cerrar conexión o mantenerla
                     
                 except Exception as e:
                     print(f"[SERVER] Error en logout: {str(e)}")
-                    conn.sendall(b"LOGOUT_FAILED\n")    
-                    
+                    try:
+                        conn.sendall(b"LOGOUT_FAILED\n")
+                    except:
+                        pass  # Si la conexión ya está rota
+
             elif command == "EXIT":
                 log_event("LOGOUT", current_user)
                 break
