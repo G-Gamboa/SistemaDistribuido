@@ -79,9 +79,9 @@ def handle_client(conn, addr):
                 encrypted_msg = conn.recv(4096)
                 
                 if send_message(current_user, recipient, encrypted_msg):
-                    conn.sendall(b'MESSAGE_SENT')
+                    conn.sendall(b'MESSAGE_SENT\n')
                 else:
-                    conn.sendall(b'MESSAGE_FAILED')
+                    conn.sendall(b'MESSAGE_FAILED\n')
                     
             elif command == "GET":
                 messages = get_messages(current_user)
