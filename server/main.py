@@ -64,35 +64,29 @@ def handle_client(conn, addr):
                     conn.sendall(b'REGISTER_FAILED: Usuario ya existe o error en BD\n')
                     log_event("REGISTER_FAILED", details=username)
                 return
-                
             elif command == "LOGIN":
                 try:
-                    print("[SERVER] Preparándose para recibir credenciales")
-                    conn.sendall(b"READY\n")  # Enviar confirmación READY inmediatamente
+                    conn.sendall(b"READY\n")
+                    credentials = conn.recv(1024).decode().strip()
                     
-                    # Recibir credenciales en un solo paquete
-                    credentials = conn.recv(1024).decode().strip().split('\n')
-                    if len(credentials) != 2:
+                    if '\n' not in credentials:
                         conn.sendall(b"LOGIN_FAILED\n")
-                        return
+                        continue
                         
-                    username, password = credentials
-                    print(f"[SERVER] Verificando credenciales para {username}")
+                    username, password = credentials.split('\n', 1)
                     
                     if verify_user(username, password):
-                        conn.sendall(b"LOGIN_SUCCESS\n")
                         current_user = username
-                        print(f"[SERVER] Autenticación exitosa para {username}")
+                        conn.sendall(b"LOGIN_SUCCESS\n")
+                        log_event("LOGIN_SUCCESS", username)
                     else:
                         conn.sendall(b"LOGIN_FAILED\n")
-                        print(f"[SERVER] Autenticación fallida para {username}")
+                        log_event("LOGIN_FAILED", details=username)
                         
                 except Exception as e:
                     print(f"[SERVER] Error en login: {str(e)}")
                     conn.sendall(b"LOGIN_ERROR\n")
-            else:
-                conn.sendall(b'INVALID_ACTION')
-                return
+                    continue
                 
             while True:
                 command = conn.recv(1024).decode().strip()
