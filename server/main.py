@@ -132,19 +132,17 @@ def handle_client(conn, addr):
                     print(f"[SERVER] Procesando logout para {current_user}")
                     log_event("USER_LOGOUT", current_user)
                     
-                    # Enviar confirmación inmediata
+                    # Limpiar usuario pero mantener conexión
+                    current_user = None
                     conn.sendall(b"LOGOUT_SUCCESS\n")
-                    print(f"[SERVER] Confirmación enviada para {current_user}")
-                    
-                    current_user = None  # Limpiar usuario actual
-                    return  # Opcional: cerrar conexión o mantenerla
+                    print(f"[SERVER] Sesión cerrada, conexión mantenida")
                     
                 except Exception as e:
                     print(f"[SERVER] Error en logout: {str(e)}")
                     try:
                         conn.sendall(b"LOGOUT_FAILED\n")
                     except:
-                        pass  # Si la conexión ya está rota
+                        pass
 
             elif command == "EXIT":
                 log_event("LOGOUT", current_user)
