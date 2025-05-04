@@ -41,7 +41,8 @@ def handle_client(conn, addr):
         conn.sendall(b"WELCOME AppMensajeria v1.0\n")
         
         action = conn.recv(1024).decode().strip()
-        
+        print(f"Acción recibida: {action}")
+
         if action == "REGISTER":
             username = conn.recv(1024).decode().strip()
             password = conn.recv(1024).decode().strip()
@@ -59,11 +60,11 @@ def handle_client(conn, addr):
             password = conn.recv(1024).decode().strip()
             
             if verify_user(username, password):
-                conn.sendall(b'LOGIN_SUCCESS')
+                conn.sendall(b'LOGIN_SUCCESS\n')
                 current_user = username
                 log_event("LOGIN_SUCCESS", username)
             else:
-                conn.sendall(b'LOGIN_FAILED')
+                conn.sendall(b'LOGIN_FAILED\n')
                 log_event("LOGIN_FAILED", details=username)
                 return
         else:
