@@ -41,8 +41,8 @@ def handle_client(conn, addr):
         conn.sendall(b"WELCOME AppMensajeria v1.0\n")
         
         while True:
-            action = conn.recv(1024).decode().strip()
-            print(f"Acción recibida: {action}")
+            command = conn.recv(1024).decode().strip()
+            print(f"[SERVER] Comando recibido: {command}")
 
             if not command:
                 break
@@ -52,107 +52,149 @@ def handle_client(conn, addr):
                 conn.sendall(b"NEED_LOGIN\n")
                 continue
 
-
-            if action == "REGISTER":
-                username = conn.recv(1024).decode().strip()
-                password = conn.recv(1024).decode().strip()
-                
-                if register_user(username, password):
-                    conn.sendall(b'REGISTER_SUCCESS\n')
-                    log_event("REGISTER_SUCCESS", username)
-                else:
-                    conn.sendall(b'REGISTER_FAILED: Usuario ya existe o error en BD\n')
-                    log_event("REGISTER_FAILED", details=username)
-                return
-            elif command == "LOGIN":
+            if command == "REGISTER":
                 try:
-                    conn.sendall(b"READY\n")
-                    credentials = conn.recv(1024).decode().strip()
+                    print("[SERVER] Procesando registro")
+                    conn.sendall(b"READY\n")  # Confirmar listo para recibir datos
                     
-                    if '\n' not in credentials:
-                        conn.sendall(b"LOGIN_FAILED\n")
+                    # Recibir datos de registro (usuario y contraseña)
+                    data = conn.recv(1024).decode().strip().split('\n')
+                    if len(data) != 2:
+                        conn.sendall(b'REGISTER_FAILED: Formato invalido\n')
                         continue
                         
-                    username, password = credentials.split('\n', 1)
+                    username, password = data
+                    
+                    if register_user(username, password):
+                        conn.sendall(b'REGISTER_SUCCESS\n')
+                        log_event("REGISTER_SUCCESS", username)
+                    else:
+                        conn.sendall(b'REGISTER_FAILED: Usuario ya existe o error en BD\n')
+                        log_event("REGISTER_FAILED", details=username)
+                        
+                except Exception as e:
+                    print(f"[SERVER] Error en registro: {str(e)}")
+                    conn.sendall(b'REGISTER_ERROR\n')
+
+            elif command == "LOGIN":
+                try:
+                    print("[SERVER] Procesando login")
+                    conn.sendall(b"READY\n")  # Confirmar listo para recibir credenciales
+                    
+                    # Recibir credenciales en un solo paquete
+                    credentials = conn.recv(1024).decode().strip().split('\n')
+                    if len(credentials) != 2:
+                        conn.sendall(b"LOGIN_FAILED: Formato invalido\n")
+                        continue
+                        
+                    username, password = credentials
+                    print(f"[SERVER] Verificando credenciales para {username}")
                     
                     if verify_user(username, password):
-                        current_user = username
                         conn.sendall(b"LOGIN_SUCCESS\n")
+                        current_user = username
+                        print(f"[SERVER] Autenticación exitosa para {username}")
                         log_event("LOGIN_SUCCESS", username)
                     else:
-                        conn.sendall(b"LOGIN_FAILED\n")
-                        log_event("LOGIN_FAILED", details=username)
+                        conn.sendall(b"LOGIN_FAILED: Credenciales incorrectas\n")
+                        print(f"[SERVER] Autenticación fallida para {username}")
+                        log_event("LOGIN_FAILED", username)
                         
                 except Exception as e:
                     print(f"[SERVER] Error en login: {str(e)}")
                     conn.sendall(b"LOGIN_ERROR\n")
+
+            elif command == "SEND":
+                if current_user is None:
+                    conn.sendall(b"NEED_LOGIN\n")
                     continue
-                
-            while True:
-                command = conn.recv(1024).decode().strip()
-                
-                if command == "SEND":
+                    
+                try:
+                    print(f"[SERVER] Procesando SEND para {current_user}")
+                    conn.sendall(b"READY\n")  # Confirmar listo para recibir datos
+                    
+                    # Recibir destinatario
                     recipient = conn.recv(1024).decode().strip()
+                    # Recibir mensaje cifrado
                     encrypted_msg = conn.recv(4096)
                     
                     if send_message(current_user, recipient, encrypted_msg):
                         conn.sendall(b'MESSAGE_SENT\n')
+                        log_event("MESSAGE_SENT", current_user, details=f"Para: {recipient}")
                     else:
                         conn.sendall(b'MESSAGE_FAILED\n')
+                        log_event("MESSAGE_FAILED", current_user)
                         
-                elif command == "GET":
-                    try:
-                        messages = get_messages(current_user)
-                        print(f"[DEBUG] Mensajes encontrados: {len(messages)}")  # Log de depuración
-                        
-                        # Enviar cantidad de mensajes
-                        conn.sendall(str(len(messages)).encode() + b"\n")
-                        
-                        # Esperar confirmación READY con timeout
-                        ready = conn.recv(1024).decode().strip()
-                        if ready != "READY":
-                            raise ConnectionError(f"Se esperaba READY, se recibió: {ready}")
-                        
-                        # Enviar cada mensaje con confirmación
-                        for msg in messages:
-                            formatted = f"{msg['sender']}|{msg['message']}|{msg['time']}"
-                            conn.sendall(formatted.encode() + b"\n")
-                            
-                            # Esperar ACK por cada mensaje
-                            ack = conn.recv(3).decode().strip()
-                            if ack != "ACK":
-                                raise ConnectionError("Falta confirmación ACK")
-                                
-                        print(f"[DEBUG] Todos los mensajes enviados a {current_user}")
-                        
-                    except Exception as e:
-                        print(f"[ERROR] Error al enviar mensajes: {str(e)}")
-                        conn.sendall(b"ERROR\n")    
-                elif command == "LOGOUT":
-                    try:
-                        print(f"[SERVER] Procesando logout para {current_user}")
-                        log_event("USER_LOGOUT", current_user)
-                        
-                        # Limpiar usuario pero mantener conexión
-                        current_user = None
-                        conn.sendall(b"LOGOUT_SUCCESS\n")
-                        print(f"[SERVER] Sesión cerrada, conexión mantenida")
-                        
-                    except Exception as e:
-                        print(f"[SERVER] Error en logout: {str(e)}")
-                        try:
-                            conn.sendall(b"LOGOUT_FAILED\n")
-                        except:
-                            pass
+                except Exception as e:
+                    print(f"[SERVER] Error al enviar mensaje: {str(e)}")
+                    conn.sendall(b'MESSAGE_ERROR\n')
 
-                elif command == "EXIT":
-                    log_event("LOGOUT", current_user)
-                    break
+            elif command == "GET":
+                if current_user is None:
+                    conn.sendall(b"NEED_LOGIN\n")
+                    continue
+                    
+                try:
+                    print(f"[SERVER] Procesando GET para {current_user}")
+                    messages = get_messages(current_user)
+                    print(f"[DEBUG] Mensajes encontrados: {len(messages)}")
+                    
+                    # Enviar cantidad de mensajes
+                    conn.sendall(str(len(messages)).encode() + b"\n")
+                    
+                    # Esperar confirmación READY con timeout
+                    ready = conn.recv(1024).decode().strip()
+                    if ready != "READY":
+                        raise ConnectionError(f"Se esperaba READY, se recibió: {ready}")
+                    
+                    # Enviar cada mensaje con confirmación
+                    for msg in messages:
+                        formatted = f"{msg['sender']}|{msg['message']}|{msg['time']}"
+                        conn.sendall(formatted.encode() + b"\n")
+                        
+                        # Esperar ACK por cada mensaje
+                        ack = conn.recv(3).decode().strip()
+                        if ack != "ACK":
+                            raise ConnectionError("Falta confirmación ACK")
+                            
+                    print(f"[DEBUG] Todos los mensajes enviados a {current_user}")
+                    log_event("MESSAGES_DELIVERED", current_user, details=f"{len(messages)} mensajes")
+                    
+                except Exception as e:
+                    print(f"[ERROR] Error al enviar mensajes: {str(e)}")
+                    conn.sendall(b"ERROR\n")
+                    log_event("MESSAGES_DELIVERY_FAILED", current_user, str(e))
+
+            elif command == "LOGOUT":
+                try:
+                    print(f"[SERVER] Procesando logout para {current_user}")
+                    log_event("USER_LOGOUT", current_user)
+                    
+                    # Limpiar usuario pero mantener conexión
+                    current_user = None
+                    conn.sendall(b"LOGOUT_SUCCESS\n")
+                    print(f"[SERVER] Sesión cerrada, conexión mantenida")
+                    
+                except Exception as e:
+                    print(f"[SERVER] Error en logout: {str(e)}")
+                    try:
+                        conn.sendall(b"LOGOUT_FAILED\n")
+                    except:
+                        pass
+
+            elif command == "EXIT":
+                log_event("CONNECTION_CLOSED", current_user)
+                break
+                
+            else:
+                conn.sendall(b'INVALID_COMMAND\n')
+                log_event("INVALID_COMMAND", current_user, details=command)
                 
     except Exception as e:
         log_event("CONNECTION_ERROR", current_user, str(e))
     finally:
         conn.close()
+        print(f"[SERVER] Conexión cerrada con {addr}")
 
 def start_server():
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
