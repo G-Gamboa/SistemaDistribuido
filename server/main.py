@@ -36,120 +36,70 @@ MAX_CONNECTIONS = int(config['server']['max_connections'])
 
 def handle_client(conn, addr):
     current_user = None
-    conn.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)  # Desactiva Nagle
-    log_event.info(f"Conexión establecida desde {addr}")
-
     try:
-        # Paso 1: Enviar bienvenida y versión del protocolo
+        log_event("CONNECTION_ATTEMPT", details=f"IP: {addr[0]}")
         conn.sendall(b"WELCOME AppMensajeria v1.0\n")
-
-        # Paso 2: Bucle principal de comandos
+        
+        action = conn.recv(1024).decode().strip()
+        
+        if action == "REGISTER":
+            username = conn.recv(1024).decode().strip()
+            password = conn.recv(1024).decode().strip()
+            
+            if register_user(username, password):
+                conn.sendall(b'REGISTER_SUCCESS\n')
+                log_event("REGISTER_SUCCESS", username)
+            else:
+                conn.sendall(b'REGISTER_FAILED: Usuario ya existe o error en BD\n')
+                log_event("REGISTER_FAILED", details=username)
+            return
+            
+        elif action == "LOGIN":
+            username = conn.recv(1024).decode().strip()
+            password = conn.recv(1024).decode().strip()
+            
+            if verify_user(username, password):
+                conn.sendall(b'LOGIN_SUCCESS')
+                current_user = username
+                log_event("LOGIN_SUCCESS", username)
+            else:
+                conn.sendall(b'LOGIN_FAILED')
+                log_event("LOGIN_FAILED", details=username)
+                return
+        else:
+            conn.sendall(b'INVALID_ACTION')
+            return
+            
         while True:
-            try:
-                # Configurar timeout para operaciones
-                conn.settimeout(30.0)  # 30 segundos para recibir comandos
-
-                # Recibir comando principal
-                command = conn.recv(1024).decode().strip()
-                if not command:
-                    log_event.info(f"Conexión cerrada por {addr}")
-                    break
-
-                log_event.info(f"Comando recibido de {addr}: {command}")
-
-                # Procesar comando REGISTER
-                if command == "REGISTER":
-                    conn.sendall(b"READY\n")  # Confirmar recepción de comando
-
-                    # Recibir datos de registro
-                    username = conn.recv(1024).decode().strip()
-                    password = conn.recv(1024).decode().strip()
-                    log_event.debug(f"Intento de registro: {username}")
-
-                    # Procesar registro
-                    if register_user(username, password):
-                        conn.sendall(b"REGISTER_SUCCESS\n")
-                        log_event.info(f"Registro exitoso: {username}")
-                    else:
-                        conn.sendall(b"REGISTER_FAILED\n")
-                        log_event.warning(f"Fallo en registro: {username}")
-
-                # Procesar comando LOGIN
-                elif command == "LOGIN":
-                    conn.sendall(b"READY\n")
-
-                    # Recibir credenciales
-                    username = conn.recv(1024).decode().strip()
-                    password = conn.recv(1024).decode().strip()
-                    log_event.debug(f"Intento de login: {username}")
-
-                    # Validar credenciales
-                    if verify_user(username, password):
-                        current_user = username
-                        conn.sendall(b"LOGIN_SUCCESS\n")
-                        log_event.info(f"Login exitoso: {username}")
-                    else:
-                        conn.sendall(b"LOGIN_FAILED\n")
-                        log_event.warning(f"Fallo en login: {username}")
-
-                # Procesar comando SEND
-                elif command == "SEND" and current_user:
-                    conn.sendall(b"READY\n")
-
-                    # Recibir datos del mensaje
-                    recipient = conn.recv(1024).decode().strip()
-                    encrypted_msg = conn.recv(4096)  # Mensaje cifrado
-
-                    if send_message(current_user, recipient, encrypted_msg):
-                        conn.sendall(b"MESSAGE_SENT\n")
-                        log_event.info(f"Mensaje enviado de {current_user} a {recipient}")
-                    else:
-                        conn.sendall(b"MESSAGE_FAILED\n")
-                        log_event.error(f"Error al enviar mensaje de {current_user}")
-
-                # Procesar comando GET
-                elif command == "GET" and current_user:
-                    conn.sendall(b"READY\n")
-
-                    messages = get_messages(current_user)
-                    conn.sendall(str(len(messages)).encode() + b"\n")
-
-                    # Esperar confirmación antes de enviar mensajes
-                    if conn.recv(1024) == b"READY":
-                        for msg in messages:
-                            formatted = f"{msg['sender']}|{msg['message']}|{msg['time']}"
-                            conn.sendall(formatted.encode())
-                            conn.recv(1024)  # Esperar ACK por cada mensaje
-
-                    log_event.info(f"Enviados {len(messages)} mensajes a {current_user}")
-
-                # Comando EXIT
-                elif command == "EXIT":
-                    log_event.info(f"Usuario {current_user} cerró sesión")
-                    conn.sendall(b"GOODBYE\n")
-                    break
-
-                # Comando no reconocido
+            command = conn.recv(1024).decode().strip()
+            
+            if command == "SEND":
+                recipient = conn.recv(1024).decode().strip()
+                encrypted_msg = conn.recv(4096)
+                
+                if send_message(current_user, recipient, encrypted_msg):
+                    conn.sendall(b'MESSAGE_SENT')
                 else:
-                    conn.sendall(b"INVALID_COMMAND\n")
-                    log_event.warning(f"Comando inválido de {addr}: {command}")
-
-            except socket.timeout:
-                log_event.error(f"Timeout con {addr}")
-                conn.sendall(b"TIMEOUT\n")
+                    conn.sendall(b'MESSAGE_FAILED')
+                    
+            elif command == "GET":
+                messages = get_messages(current_user)
+                conn.sendall(str(len(messages)).encode())
+                
+                if conn.recv(1024) == b'READY':
+                    for msg in messages:
+                        formatted = f"{msg['sender']}|{msg['message']}|{msg['time']}"
+                        conn.sendall(formatted.encode())
+                        conn.recv(1024)
+                        
+            elif command == "EXIT":
+                log_event("LOGOUT", current_user)
                 break
-            except Exception as e:
-                log_event.error(f"Error procesando comando: {str(e)}")
-                conn.sendall(b"SERVER_ERROR\n")
-                break
-
+                
     except Exception as e:
-        log_event.error(f"Error en la conexión con {addr}: {str(e)}")
+        log_event("CONNECTION_ERROR", current_user, str(e))
     finally:
-        if current_user:
-            log_event.info(f"Desconectando usuario: {current_user}")
         conn.close()
-        log_event.info(f"Conexión cerrada con {addr}")
 
 def start_server():
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
