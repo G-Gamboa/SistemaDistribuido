@@ -59,8 +59,12 @@ def handle_client(conn, addr):
             conn.sendall(b"READY\n")
             print("[DEBUG] Esperando credenciales...")
             
-            username = conn.recv(1024).decode().strip()
-            password = conn.recv(1024).decode().strip()
+            credentials = conn.recv(1024).decode().strip().split('\n')
+            if len(credentials) != 2:
+                    conn.sendall(b"LOGIN_FAILED\n")
+                    return
+                    
+            username, password = credentials[0], credentials[1]
             print(f"[DEBUG] Credenciales recibidas: {username}/{password}")
 
             if verify_user(username, password):

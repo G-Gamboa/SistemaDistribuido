@@ -71,22 +71,21 @@ def register_user(username, password):
         return False
 
 def verify_user(username, password):
-    """Verify user credentials"""
     try:
-        user_data = execute_query(
-            "SELECT password_hash, salt FROM usuarios WHERE username = %s",
-            (username,),
-            fetch=True
-        )
+        print(f"[DB] Verificando usuario: {username}")  # Debug
+        query = "SELECT password_hash, salt FROM usuarios WHERE username = %s"
+        result = execute_query(query, (username,), fetch=True)
         
-        if not user_data:
+        if not result:
+            print(f"[DB] Usuario no encontrado: {username}")  # Debug
             return False
             
+        print(f"[DB] Datos obtenidos de BD: {result}")  # Debug
         return verify_password(
-            user_data[0]['salt'],
-            user_data[0]['password_hash'],
+            result[0]['salt'],
+            result[0]['password_hash'],
             password
         )
     except Exception as e:
-        logger.error(f"Error en verificación: {e}")
+        print(f"[DB] Error en verificación: {str(e)}")  # Debug
         return False
