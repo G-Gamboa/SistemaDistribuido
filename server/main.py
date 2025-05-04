@@ -65,30 +65,27 @@ def handle_client(conn, addr):
                     log_event("REGISTER_FAILED", details=username)
                 return
                 
-            elif action == "LOGIN":
+            elif command == "LOGIN":
                 try:
-                    print("[SERVER] Enviando READY para credenciales")
-                    conn.sendall(b"READY\n")  # Confirmación para recibir credenciales
+                    print("[SERVER] Preparándose para recibir credenciales")
+                    conn.sendall(b"READY\n")  # Enviar confirmación READY inmediatamente
                     
-                    # Recibir ambas credenciales juntas
-                    credentials = conn.recv(1024).decode().strip()
-                    print(f"[SERVER] Credenciales recibidas (raw): {credentials}")
-                    
-                    # Separar usuario y contraseña
-                    parts = credentials.split('\n')
-                    if len(parts) != 2:
-                        raise ValueError("Formato de credenciales incorrecto")
+                    # Recibir credenciales en un solo paquete
+                    credentials = conn.recv(1024).decode().strip().split('\n')
+                    if len(credentials) != 2:
+                        conn.sendall(b"LOGIN_FAILED\n")
+                        return
                         
-                    username, password = parts[0], parts[1]
-                    print(f"[SERVER] Procesando login para: {username}")
+                    username, password = credentials
+                    print(f"[SERVER] Verificando credenciales para {username}")
                     
                     if verify_user(username, password):
                         conn.sendall(b"LOGIN_SUCCESS\n")
                         current_user = username
-                        print(f"[SERVER] Login exitoso: {username}")
+                        print(f"[SERVER] Autenticación exitosa para {username}")
                     else:
                         conn.sendall(b"LOGIN_FAILED\n")
-                        print(f"[SERVER] Login fallido: {username}")
+                        print(f"[SERVER] Autenticación fallida para {username}")
                         
                 except Exception as e:
                     print(f"[SERVER] Error en login: {str(e)}")
