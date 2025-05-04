@@ -1,4 +1,6 @@
 import logging
+import socket
+import time
 from typing import Optional, Tuple
 
 logger = logging.getLogger(__name__)
@@ -32,35 +34,51 @@ class AuthManager:
             return False
 
     def login(self, username: str, password: str) -> bool:
-        """Autentica un usuario con el servidor"""
         try:
-            response = self.network.send_command(
-                "LOGIN", 
-                f"{username}\n{password}"
-            )
+            print(f"[AUTH] Preparando credenciales para {username}")
+            
+            # Envía usuario y contraseña como un solo mensaje separado por \n
+            credentials = f"{username}\n{password}"
+            response = self.network.send_command("LOGIN", credentials)
+            
+            print(f"[AUTH] Respuesta del servidor: {response}")
             
             if response == "LOGIN_SUCCESS":
-                self.current_user = username
-                logger.info(f"Usuario {username} autenticado")
+                print("[AUTH] Autenticación exitosa")
                 return True
+            elif response == "LOGIN_FAILED":
+                print("[AUTH] Credenciales incorrectas")
+                return False
             else:
-                logger.error(f"Error en autenticación: {response}")
+                print("[AUTH] Respuesta inesperada del servidor")
                 return False
                 
         except Exception as e:
-            logger.error(f"Error en login: {str(e)}")
+            print(f"[AUTH] Error durante login: {str(e)}")
             return False
 
-    def logout(self) -> bool:
-        """Cierra la sesión del usuario"""
+    def logout(self):
         try:
-            if self.current_user:
-                response = self.network.send_command("LOGOUT")
-                if response == "LOGOUT_SUCCESS":
-                    logger.info(f"Usuario {self.current_user} cerró sesión")
-                    self.current_user = None
-                    return True
+            print("[AUTH] Iniciando cierre de sesión")
+            
+            if not self.network.connected:
+                print("[AUTH] No hay conexión activa")
+                return False
+                
+            # Enviar comando LOGOUT con timeout extendido
+            response = self.network.send_command("LOGOUT", timeout=10.0)
+            
+            if response == "LOGOUT_SUCCESS":
+                print("[AUTH] Sesión cerrada correctamente")
+                self.current_user = None
+                return True
+            else:
+                print(f"[AUTH] Respuesta inesperada: {response}")
+                return False
+                
+        except socket.timeout:
+            print("[AUTH] El servidor no respondió a tiempo")
             return False
         except Exception as e:
-            logger.error(f"Error al cerrar sesión: {str(e)}")
+            print(f"[AUTH] Error durante logout: {str(e)}")
             return False

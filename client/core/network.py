@@ -67,34 +67,45 @@ class NetworkClient:
         return False
 
     def send_command(self, command: str, data: Optional[Union[str, bytes]] = None) -> Optional[str]:
-        """Envía un comando al servidor y recibe respuesta"""
-        if not self.connected:
-            logger.error("No hay conexión activa con el servidor")
-            return None
-
         try:
-            # Enviar comando
+            # 1. Enviar comando
+            self.socket.settimeout(10.0)
             self.socket.sendall(command.encode() + b'\n')
+            print(f"[DEBUG] Comando enviado: {command}")
+
+            if command == "LOGOUT":
+                # Esperar respuesta con timeout extendido
+                response = self.socket.recv(1024).decode().strip()
+                print(f"[NETWORK] Respuesta LOGOUT: {response}")
+                return response
+
+            # 2. Esperar READY del servidor (con timeout)
+            self.socket.settimeout(5.0)
+            ready = self.socket.recv(1024).decode().strip()
+            print(f"[DEBUG] Respuesta del servidor: {ready}")
             
-            # Esperar confirmación
-            response = self._receive_response()
-            if response != "READY":
-                raise ConnectionError("Servidor no está listo para recibir datos")
-                
-            # Enviar datos si existen
+            if ready != "READY":
+                raise ConnectionError(f"Expected READY, got {ready}")
+
+            # 3. Enviar datos (si existen)
             if data:
+                print(f"[DEBUG] Enviando datos: {data[:20]}...")  # Muestra parte de los datos
                 if isinstance(data, str):
                     self.socket.sendall(data.encode() + b'\n')
                 else:
                     self.socket.sendall(data + b'\n')
-                
-            # Recibir respuesta final
-            return self._receive_response()
-            
+            # 4. Esperar respuesta final
+            response = self.socket.recv(4096).decode().strip()
+            print(f"[DEBUG] Respuesta final: {response}")
+
+            return response
+
+        except socket.timeout:
+            print("[ERROR] Timeout esperando respuesta del servidor")
+            raise
         except Exception as e:
-            logger.error(f"Error en comunicación: {str(e)}")
-            self.disconnect()
-            return None
+            print(f"[ERROR] Error en send_command: {str(e)}")
+            raise
 
     def _receive_response(self) -> str:
         """Recibe datos del servidor con manejo de errores"""
@@ -135,35 +146,42 @@ class NetworkClient:
             return False
 
     def get_messages(self) -> list:
-        """Obtiene mensajes nuevos del servidor"""
         try:
-            response = self.send_command("GET_MESSAGES")
-            if not response or not response.isdigit():
-                return []
-                
-            count = int(response)
-            messages = []
+            # Enviar comando GET
+            self.socket.sendall(b"GET\n")
+            print("[CLIENT] Comando GET enviado")
             
-            for _ in range(count):
-                msg_data = self._receive_response()
-                if msg_data:
-                    parts = msg_data.split('|', 2)
+            # Recibir cantidad de mensajes
+            msg_count = int(self.socket.recv(1024).decode().strip())
+            print(f"[CLIENT] Mensajes por recibir: {msg_count}")
+            
+            messages = []
+            if msg_count > 0:
+                # Enviar READY para confirmar
+                self.socket.sendall(b"READY\n")
+                print("[CLIENT] Confirmación READY enviada")
+                
+                # Recibir cada mensaje
+                for _ in range(msg_count):
+                    msg_data = self.socket.recv(4096).decode().strip()
+                    print(f"[CLIENT] Mensaje recibido: {msg_data[:50]}...")  # Muestra parte del mensaje
+                    
+                    # Enviar ACK por cada mensaje
+                    self.socket.sendall(b"ACK\n")
+                    
+                    # Parsear mensaje
+                    parts = msg_data.split('|')
                     if len(parts) == 3:
-                        sender, encrypted_msg, timestamp = parts
-                        try:
-                            decrypted = decrypt_message(encrypted_msg.encode())
-                            messages.append({
-                                'sender': sender,
-                                'message': decrypted,
-                                'time': timestamp
-                            })
-                        except Exception as e:
-                            logger.error(f"Error al desencriptar mensaje: {str(e)}")
+                        messages.append({
+                            'sender': parts[0],
+                            'message': parts[1],
+                            'time': parts[2]
+                        })
             
             return messages
             
         except Exception as e:
-            logger.error(f"Error al obtener mensajes: {str(e)}")
+            print(f"[CLIENT] Error al obtener mensajes: {str(e)}")
             return []
 
 def encrypt_message(message: str) -> bytes:
