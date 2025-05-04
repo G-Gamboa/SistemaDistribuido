@@ -56,7 +56,6 @@ def handle_client(conn, addr):
             return
             
         elif action == "LOGIN":
-            conn.sendall(b"READY\n")
             print("[DEBUG] Esperando credenciales...")
             
             credentials = conn.recv(1024).decode().strip().split('\n')
