@@ -56,16 +56,22 @@ def handle_client(conn, addr):
             return
             
         elif action == "LOGIN":
+            conn.sendall(b"READY\n")
+            print("[DEBUG] Esperando credenciales...")
+            
             username = conn.recv(1024).decode().strip()
             password = conn.recv(1024).decode().strip()
-            
+            print(f"[DEBUG] Credenciales recibidas: {username}/{password}")
+
             if verify_user(username, password):
                 conn.sendall(b'LOGIN_SUCCESS\n')
                 current_user = username
+                print(f"[DEBUG] Login exitoso para {username}")
                 log_event("LOGIN_SUCCESS", username)
             else:
                 conn.sendall(b'LOGIN_FAILED\n')
                 log_event("LOGIN_FAILED", details=username)
+                print(f"[DEBUG] Login fallido para {username}")
                 return
         else:
             conn.sendall(b'INVALID_ACTION')
