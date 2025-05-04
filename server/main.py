@@ -106,28 +106,37 @@ def handle_client(conn, addr):
 
             elif command == "SEND":
                 if current_user is None:
-                    conn.sendall(b"NEED_LOGIN\n")
+                    conn.sendall('NEED_LOGIN\n'.encode('utf-8'))
                     continue
                     
                 try:
                     print(f"[SERVER] Procesando SEND para {current_user}")
-                    conn.sendall(b"READY\n")  # Confirmar listo para recibir datos
                     
-                    # Recibir destinatario
-                    recipient = conn.recv(1024).decode().strip()
-                    # Recibir mensaje cifrado
+                    # 1. Enviar READY para iniciar transferencia
+                    conn.sendall('READY\n'.encode('utf-8'))
+                    
+                    # 2. Recibir destinatario (primera línea)
+                    recipient = conn.recv(1024).decode('utf-8').strip()
+                    
+                    # 3. Enviar READY para el mensaje
+                    conn.sendall('READY\n'.encode('utf-8'))
+                    
+                    # 4. Recibir mensaje cifrado
                     encrypted_msg = conn.recv(4096)
                     
                     if send_message(current_user, recipient, encrypted_msg):
-                        conn.sendall(b'MESSAGE_SENT\n')
-                        log_event("MESSAGE_SENT", current_user, details=f"Para: {recipient}")
+                        conn.sendall('MESSAGE_SENT\n'.encode('utf-8'))
+                        print(f"[SERVER] Mensaje de {current_user} a {recipient} enviado")
                     else:
-                        conn.sendall(b'MESSAGE_FAILED\n')
-                        log_event("MESSAGE_FAILED", current_user)
+                        conn.sendall('MESSAGE_FAILED\n'.encode('utf-8'))
+                        print(f"[SERVER] Falló el envío a {recipient}")
                         
                 except Exception as e:
-                    print(f"[SERVER] Error al enviar mensaje: {str(e)}")
-                    conn.sendall(b'MESSAGE_ERROR\n')
+                    print(f"[SERVER] Error en SEND: {str(e)}")
+                    try:
+                        conn.sendall('MESSAGE_ERROR\n'.encode('utf-8'))
+                    except:
+                        pass
 
             elif command == "GET":
                 if current_user is None:
