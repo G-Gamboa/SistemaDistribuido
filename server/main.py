@@ -85,14 +85,24 @@ def handle_client(conn, addr):
                     
             elif command == "GET":
                 messages = get_messages(current_user)
-                conn.sendall(str(len(messages)).encode())
+                conn.sendall(str(len(messages)).encode() + b"\n")  # Envía cantidad
                 
-                if conn.recv(1024) == b'READY':
-                    for msg in messages:
-                        formatted = f"{msg['sender']}|{msg['message']}|{msg['time']}"
-                        conn.sendall(formatted.encode())
-                        conn.recv(1024)
-                        
+                # Espera confirmación READY con timeout
+                try:
+                    ready_signal = conn.recv(1024).decode().strip()
+                    if ready_signal == "READY":
+                        for msg in messages:
+                            formatted = f"{msg['sender']}|{msg['message']}|{msg['time']}\n"
+                            conn.sendall(formatted.encode())
+                            # Espera ACK por cada mensaje
+                            ack = conn.recv(2)
+                            if ack != b"OK":
+                                break
+                    else:
+                        log_event(f"Señal inválida esperando mensajes: {ready_signal}", details="Se esperaba 'READY'")
+                except socket.timeout:
+                    log_event("Timeout esperando READY para enviar mensajes", details="Tiempo de espera agotado")
+                                    
             elif command == "EXIT":
                 log_event("LOGOUT", current_user)
                 break
