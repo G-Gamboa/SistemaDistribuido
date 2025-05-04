@@ -34,30 +34,42 @@ class AuthManager:
             return False
 
     def login(self, username: str, password: str) -> bool:
-        try:
-            print(f"[AUTH] Preparando credenciales para {username}")
-            
-            # Envía usuario y contraseña como un solo mensaje separado por \n
-            credentials = f"{username}\n{password}"
-            response = self.network.send_command("LOGIN", credentials)
-            
-            print(f"[AUTH] Respuesta del servidor: {response}")
-            
-            if response == "LOGIN_SUCCESS":
-                print("[AUTH] Autenticación exitosa")
-                return True
-            elif response == "LOGIN_FAILED":
-                print("[AUTH] Credenciales incorrectas")
-                return False
-            else:
-                print("[AUTH] Respuesta inesperada del servidor")
-                return False
+        """Versión mejorada con manejo de protocolo robusto"""
+        for attempt in range(1, 4):  # 3 intentos
+            try:
+                print(f"[AUTH] Intento {attempt} para {username}")
                 
-        except Exception as e:
-            print(f"[AUTH] Error durante login: {str(e)}")
-            return False
+                # Enviar credenciales como un solo mensaje
+                credentials = f"{username}\n{password}"
+                response = self.network.send_command("LOGIN", credentials, timeout=10.0)
+                
+                if response == "LOGIN_SUCCESS":
+                    self.current_user = username
+                    print("[AUTH] Autenticación exitosa")
+                    return True
+                elif response == "LOGIN_FAILED":
+                    print("[AUTH] Credenciales incorrectas")
+                    return False
+                elif response.startswith("LOGIN_FAILED:"):
+                    print(f"[AUTH] Error de autenticación: {response.split(':', 1)[1]}")
+                    return False
+                else:
+                    print(f"[AUTH] Respuesta inesperada: {response}")
+                    continue
+                    
+            except ConnectionError as e:
+                print(f"[AUTH] Error de conexión: {str(e)}")
+                time.sleep(1)  # Espera antes de reintentar
+                continue
+            except Exception as e:
+                print(f"[AUTH] Error inesperado: {str(e)}")
+                self.network.disconnect()
+                return False
+        
+        print("[AUTH] Todos los intentos fallaron")
+        return False
 
-    def logout(self):
+    def logout(self) -> bool:
         try:
             print("[AUTH] Iniciando cierre de sesión")
             
@@ -65,20 +77,24 @@ class AuthManager:
                 print("[AUTH] No hay conexión activa")
                 return False
                 
-            # Enviar comando LOGOUT con timeout extendido
-            response = self.network.send_command("LOGOUT", timeout=10.0)
+            if not self.current_user:
+                print("[AUTH] No hay sesión activa")
+                return True
+                
+            response = self.network.send_command("LOGOUT", timeout=5.0)
             
             if response == "LOGOUT_SUCCESS":
                 print("[AUTH] Sesión cerrada correctamente")
                 self.current_user = None
                 return True
+            elif response == "LOGOUT_FAILED":
+                print("[AUTH] Falló el cierre de sesión")
+                return False
             else:
                 print(f"[AUTH] Respuesta inesperada: {response}")
                 return False
                 
-        except socket.timeout:
-            print("[AUTH] El servidor no respondió a tiempo")
-            return False
         except Exception as e:
             print(f"[AUTH] Error durante logout: {str(e)}")
+            self.current_user = None
             return False

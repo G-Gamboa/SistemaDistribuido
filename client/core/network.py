@@ -66,57 +66,102 @@ class NetworkClient:
         
         return False
 
-    def send_command(self, command: str, data: Optional[Union[str, bytes]] = None) -> Optional[str]:
+    def send_command(self, command: str, data=None, timeout=5.0):
+        """Versión robusta con manejo mejorado de protocolo"""
         try:
+            # Verificar conexión activa
+            if not self.connected or not self.socket:
+                if not self.reconnect():
+                    raise ConnectionError("No se pudo conectar al servidor")
+            # Configurar timeout
+            self.socket.settimeout(timeout)
+            
             # 1. Enviar comando
-            self.socket.settimeout(10.0)
             self.socket.sendall(command.encode() + b'\n')
-            print(f"[DEBUG] Comando enviado: {command}")
+            print(f"[NETWORK] Comando {command} enviado")
 
-            if command == "LOGOUT":
-                # Esperar respuesta con timeout extendido
+            # Manejo especial para comandos de autenticación
+            if command in ["LOGIN", "REGISTER"]:
+                # Esperar READY del servidor
                 response = self.socket.recv(1024).decode().strip()
-                print(f"[NETWORK] Respuesta LOGOUT: {response}")
+                print(f"[NETWORK] Respuesta inicial: {response}")
+
+                if response == "NEED_LOGIN":
+                    raise ConnectionError("Requiere autenticación primero")
+                elif response != "READY":
+                    # Manejar mensaje de bienvenida u otras respuestas
+                    if response.startswith("WELCOME"):
+                        # Volver a leer para obtener READY
+                        response = self.socket.recv(1024).decode().strip()
+                        if response != "READY":
+                            raise ConnectionError(f"Protocolo inválido, esperaba READY, obtuve: {response}")
+                    else:
+                        raise ConnectionError(f"Respuesta inesperada: {response}")
+
+                # 2. Enviar datos de autenticación
+                payload = data.encode() if isinstance(data, str) else data
+                print(f"[NETWORK] Enviando {len(payload)} bytes de datos...")
+                self.socket.sendall(payload + b'\n')
+
+                # 3. Recibir respuesta final
+                final_response = self.socket.recv(1024).decode().strip()
+                print(f"[NETWORK] Respuesta final: {final_response}")
+                return final_response
+
+            # Comandos especiales (no requieren READY)
+            if command in ["LOGOUT", "EXIT"]:
+                response = self.socket.recv(1024).decode().strip()
+                print(f"[NETWORK] Respuesta {command}: {response}")
                 return response
 
-            # 2. Esperar READY del servidor (con timeout)
-            self.socket.settimeout(5.0)
-            ready = self.socket.recv(1024).decode().strip()
-            print(f"[DEBUG] Respuesta del servidor: {ready}")
-            
-            if ready != "READY":
-                raise ConnectionError(f"Expected READY, got {ready}")
+            # 2. Esperar READY para otros comandos
+            response = self.socket.recv(1024).decode().strip()
+            print(f"[NETWORK] Respuesta inicial: {response}")
 
-            # 3. Enviar datos (si existen)
+            if response == "NEED_LOGIN":
+                raise ConnectionError("Requiere autenticación primero")
+            elif response != "READY":
+                raise ConnectionError(f"Protocolo inválido, esperaba READY, obtuve: {response}")
+
+            # 3. Enviar datos si existen
             if data:
-                print(f"[DEBUG] Enviando datos: {data[:20]}...")  # Muestra parte de los datos
-                if isinstance(data, str):
-                    self.socket.sendall(data.encode() + b'\n')
-                else:
-                    self.socket.sendall(data + b'\n')
-            # 4. Esperar respuesta final
-            response = self.socket.recv(4096).decode().strip()
-            print(f"[DEBUG] Respuesta final: {response}")
+                payload = data.encode() if isinstance(data, str) else data
+                print(f"[NETWORK] Enviando {len(payload)} bytes de datos...")
+                self.socket.sendall(payload + b'\n')
 
-            return response
+            # 4. Recibir respuesta final
+            final_response = self.socket.recv(4096).decode().strip()
+            print(f"[NETWORK] Respuesta final: {final_response}")
+            return final_response
 
         except socket.timeout:
-            print("[ERROR] Timeout esperando respuesta del servidor")
-            raise
+            print("[NETWORK] Timeout esperando respuesta")
+            self.disconnect()
+            raise ConnectionError("El servidor no respondió a tiempo")
         except Exception as e:
-            print(f"[ERROR] Error en send_command: {str(e)}")
+            print(f"[NETWORK] Error en comunicación: {str(e)}")
+            self.disconnect()
             raise
 
-    def _receive_response(self) -> str:
-        """Recibe datos del servidor con manejo de errores"""
+    def _receive_response(self):
+        """Helper para recibir respuestas"""
         try:
-            data = self.socket.recv(4096)
-            if not data:
+            response = self.socket.recv(1024).decode().strip()
+            if not response:
                 raise ConnectionError("Conexión cerrada por el servidor")
-            return data.decode().strip()
+            return response
         except Exception as e:
-            logger.error(f"Error al recibir datos: {str(e)}")
-            raise
+            raise ConnectionError(f"Error recibiendo respuesta: {str(e)}")
+
+    def _validate_connection(self):
+        """Verifica si la conexión sigue activa"""
+        try:
+            # Envía un ping de prueba
+            self.socket.settimeout(1.0)
+            self.socket.sendall(b'PING\n')
+            return self.socket.recv(16) == b'PONG\n'
+        except:
+            return False
 
     def disconnect(self):
         """Cierra la conexión de forma segura"""
@@ -133,17 +178,41 @@ class NetworkClient:
                 logger.info("Desconectado del servidor")
 
     def send_message(self, recipient: str, message: str) -> bool:
-        """Envía un mensaje cifrado al servidor"""
-        try:
-            encrypted = encrypt_message(message)
-            response = self.send_command(
-                "SEND",
-                f"{recipient}\n".encode() + encrypted
-            )
-            return response == "MESSAGE_SENT"
-        except Exception as e:
-            logger.error(f"Error al enviar mensaje: {str(e)}")
-            return False
+        """Envía mensajes con manejo robusto de conexión y sesión"""
+        max_retries = 3
+        for attempt in range(max_retries):
+            try:
+                # Verificar y restablecer conexión
+                if not self.connected or not self._validate_connection():
+                    if not self.reconnect():
+                        raise ConnectionError("No se pudo conectar al servidor")
+                
+                # 1. Enviar comando SEND
+                self.socket.sendall(b'SEND\n')
+                
+                # 2. Esperar READY del servidor
+                response = self._receive_response()
+                
+                if response == "NEED_LOGIN":
+                    raise ConnectionError("Sesión expirada, requiere reautenticación")
+                elif response != "READY":
+                    raise ConnectionError(f"Protocolo inválido, esperaba READY, obtuve: {response}")
+                
+                # 3. Enviar destinatario y mensaje juntos
+                payload = f"{recipient}\n{message}"
+                self.socket.sendall(payload.encode('utf-8') + b'\n')
+                
+                # 4. Recibir confirmación final
+                final_response = self._receive_response()
+                
+                return final_response == "MESSAGE_SENT"
+                    
+            except ConnectionError as e:
+                print(f"[NETWORK] Intento {attempt + 1} fallido: {str(e)}")
+                if attempt == max_retries - 1:
+                    raise
+                time.sleep(1)
+                continue
 
     def get_messages(self) -> list:
         try:
@@ -183,6 +252,17 @@ class NetworkClient:
         except Exception as e:
             print(f"[CLIENT] Error al obtener mensajes: {str(e)}")
             return []
+
+    def reconnect(self):
+        """Reconecta si la conexión está cerrada"""
+        try:
+            if not self.connected:
+                print("[NETWORK] Intentando reconexión...")
+                return self.connect()
+            return True
+        except Exception as e:
+            print(f"[NETWORK] Error en reconexión: {str(e)}")
+            return False
 
 def encrypt_message(message: str) -> bytes:
     """Función dummy - Debes implementar o importar tu encriptación real"""
