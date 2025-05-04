@@ -56,22 +56,33 @@ def handle_client(conn, addr):
             return
             
         elif action == "LOGIN":
-            print("[DEBUG] Esperando credenciales...")
-            
-            username = conn.recv(1024).decode().strip()
-            password = conn.recv(1024).decode().strip()
-            print(f"[DEBUG] Credenciales recibidas: {username}/{password}")
-
-            if verify_user(username, password):
-                conn.sendall(b'LOGIN_SUCCESS\n')
-                current_user = username
-                print(f"[DEBUG] Login exitoso para {username}")
-                log_event("LOGIN_SUCCESS", username)
-            else:
-                conn.sendall(b'LOGIN_FAILED\n')
-                log_event("LOGIN_FAILED", details=username)
-                print(f"[DEBUG] Login fallido para {username}")
-                return
+            try:
+                print("[SERVER] Enviando READY para credenciales")
+                conn.sendall(b"READY\n")  # Confirmación para recibir credenciales
+                
+                # Recibir ambas credenciales juntas
+                credentials = conn.recv(1024).decode().strip()
+                print(f"[SERVER] Credenciales recibidas (raw): {credentials}")
+                
+                # Separar usuario y contraseña
+                parts = credentials.split('\n')
+                if len(parts) != 2:
+                    raise ValueError("Formato de credenciales incorrecto")
+                    
+                username, password = parts[0], parts[1]
+                print(f"[SERVER] Procesando login para: {username}")
+                
+                if verify_user(username, password):
+                    conn.sendall(b"LOGIN_SUCCESS\n")
+                    current_user = username
+                    print(f"[SERVER] Login exitoso: {username}")
+                else:
+                    conn.sendall(b"LOGIN_FAILED\n")
+                    print(f"[SERVER] Login fallido: {username}")
+                    
+            except Exception as e:
+                print(f"[SERVER] Error en login: {str(e)}")
+                conn.sendall(b"LOGIN_ERROR\n")
         else:
             conn.sendall(b'INVALID_ACTION')
             return
