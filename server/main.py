@@ -100,25 +100,35 @@ def handle_client(conn, addr):
                     conn.sendall(b'MESSAGE_FAILED\n')
                     
             elif command == "GET":
-                messages = get_messages(current_user)
-                conn.sendall(str(len(messages)).encode() + b"\n")  # Envía cantidad
-                
-                # Espera confirmación READY con timeout
                 try:
-                    ready_signal = conn.recv(1024).decode().strip()
-                    if ready_signal == "READY":
-                        for msg in messages:
-                            formatted = f"{msg['sender']}|{msg['message']}|{msg['time']}\n"
-                            conn.sendall(formatted.encode())
-                            # Espera ACK por cada mensaje
-                            ack = conn.recv(2)
-                            if ack != b"OK":
-                                break
-                    else:
-                        log_event(f"Señal inválida esperando mensajes: {ready_signal}", details="Se esperaba 'READY'")
-                except socket.timeout:
-                    log_event("Timeout esperando READY para enviar mensajes", details="Tiempo de espera agotado")
-                                    
+                    messages = get_messages(current_user)
+                    print(f"[DEBUG] Mensajes encontrados: {len(messages)}")  # Log de depuración
+                    
+                    # Enviar cantidad de mensajes
+                    conn.sendall(str(len(messages)).encode() + b"\n")
+                    
+                    # Esperar confirmación READY con timeout
+                    ready = conn.recv(1024).decode().strip()
+                    if ready != "READY":
+                        raise ConnectionError(f"Se esperaba READY, se recibió: {ready}")
+                    
+                    # Enviar cada mensaje con confirmación
+                    for msg in messages:
+                        formatted = f"{msg['sender']}|{msg['message']}|{msg['time']}"
+                        conn.sendall(formatted.encode() + b"\n")
+                        
+                        # Esperar ACK por cada mensaje
+                        ack = conn.recv(3).decode().strip()
+                        if ack != "ACK":
+                            raise ConnectionError("Falta confirmación ACK")
+                            
+                    print(f"[DEBUG] Todos los mensajes enviados a {current_user}")
+                    
+                except Exception as e:
+                    print(f"[ERROR] Error al enviar mensajes: {str(e)}")
+                    conn.sendall(b"ERROR\n")    
+
+                    
             elif command == "EXIT":
                 log_event("LOGOUT", current_user)
                 break
