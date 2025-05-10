@@ -171,11 +171,15 @@ def handle_client(conn, addr):
                             conn.sendall(formatted.encode() + b"\n")
                             
                             # Esperar ACK con timeout
-                            conn.settimeout(3.0)
-                            ack = conn.recv(3).decode().strip()
+                            conn.settimeout(5.0)  # Aumentar timeout
+                            ack = conn.recv(4).decode().strip()  # Leer 4 bytes para capturar "ACK\n"
                             if ack != "ACK":
                                 print(f"[SERVER] Falta ACK para mensaje {formatted[:50]}...")
+                                print(f"[SERVER] Recibido: {ack!r}")  # Debug: mostrar lo recibido
                                 break
+                        except socket.timeout:
+                            print("[SERVER] Timeout esperando ACK")
+                            break
                         except Exception as e:
                             print(f"[SERVER] Error enviando mensaje: {str(e)}")
                             conn.sendall(b"ERROR\n")
