@@ -35,7 +35,7 @@ HOST = config['server']['host']
 PORT = int(config['server']['port'])
 MAX_CONNECTIONS = int(config['server']['max_connections'])
 
-def handle_client(self,conn, addr):
+def handle_client(conn, addr):
     current_user = None
     try:
         log_event("CONNECTION_ATTEMPT", details=f"IP: {addr[0]}")
@@ -161,7 +161,7 @@ def handle_client(self,conn, addr):
                     conn.sendall(f"{len(messages)}\nEND\n".encode())
                     
                     # Esperar confirmación READY
-                    ready = self.read_until(conn, b'\nEND\n')
+                    ready = read_until(conn, b'\nEND\n')
                     if ready.strip() != "READY":
                         raise ConnectionError("Protocolo inválido")
                     
@@ -172,7 +172,7 @@ def handle_client(self,conn, addr):
                             conn.sendall(formatted.encode())
                             
                             # Esperar ACK con timeout
-                            ack = self.read_until(conn, b'\nEND\n', timeout=5.0)
+                            ack = read_until(conn, b'\nEND\n', timeout=5.0)
                             if ack.strip() != "ACK":
                                 raise ConnectionError("Falta confirmación ACK")
                                 
@@ -217,29 +217,29 @@ def handle_client(self,conn, addr):
         print(f"[SERVER] Conexión cerrada con {addr}")
 
 
-def read_until(self, conn, delimiter, timeout=5.0):
-    """Lee datos hasta encontrar el delimitador con timeout"""
-    conn.settimeout(timeout)
-    data = b''
-    start_time = time.time()
-    
-    while True:
-        try:
-            chunk = conn.recv(4096)
-            if not chunk:
+    def read_until(self, conn, delimiter, timeout=5.0):
+        """Lee datos hasta encontrar el delimitador con timeout"""
+        conn.settimeout(timeout)
+        data = b''
+        start_time = time.time()
+        
+        while True:
+            try:
+                chunk = conn.recv(4096)
+                if not chunk:
+                    break
+                data += chunk
+                if delimiter in data:
+                    break
+                if time.time() - start_time > timeout:
+                    raise socket.timeout()
+            except socket.timeout:
+                raise
+            except Exception as e:
+                print(f"[SERVER] Error leyendo datos: {str(e)}")
                 break
-            data += chunk
-            if delimiter in data:
-                break
-            if time.time() - start_time > timeout:
-                raise socket.timeout()
-        except socket.timeout:
-            raise
-        except Exception as e:
-            print(f"[SERVER] Error leyendo datos: {str(e)}")
-            break
-    
-    return data.split(delimiter)[0].decode()
+        
+        return data.split(delimiter)[0].decode()
 
 
 def start_server():
