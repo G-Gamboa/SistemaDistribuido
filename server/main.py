@@ -104,7 +104,7 @@ def handle_client(conn, addr):
 
             elif command == "SEND":
                 if current_user is None:
-                    conn.sendall(b'NEED_LOGIN\n')
+                    conn.sendall(b"NEED_LOGIN\n")
                     print(f"[SERVER] Intento de SEND sin autenticación desde {addr}")
                     continue
                     
@@ -112,31 +112,38 @@ def handle_client(conn, addr):
                     print(f"[SERVER] Procesando SEND para {current_user}")
                     
                     # Paso 1: Confirmar READY
-                    conn.sendall(b'READY\n')
+                    conn.sendall(b"READY\n")
                     
-                    # Paso 2: Recibir destinatario y mensaje
-                    data = conn.recv(4096).decode().strip().split('\n')
+                    # Paso 2: Recibir datos (esperamos 2 líneas: destinatario + mensaje)
+                    data = []
+                    while len(data) < 2:  # Esperamos exactamente 2 líneas
+                        line = conn.recv(4096).decode().strip()
+                        if line:
+                            data.extend(line.split('\n'))
+                    
+                    print(f"[SERVER] Datos recibidos: {data}")
+                    
                     if len(data) < 2:
-                        conn.sendall(b'MESSAGE_FAILED: Formato invalido\n')
+                        conn.sendall(b"MESSAGE_FAILED: Formato invalido\n")
                         continue
                         
                     recipient = data[0]
-                    message = '\n'.join(data[1:])  # Permite mensajes multilínea
+                    message = data[1]
                     
                     print(f"[SERVER] Mensaje de {current_user} para {recipient}")
                     
                     # Procesar mensaje
                     if send_message(current_user, recipient, message):
-                        conn.sendall(b'MESSAGE_SENT\n')
+                        conn.sendall(b"MESSAGE_SENT\n")
                         print(f"[SERVER] Mensaje entregado")
                     else:
-                        conn.sendall(b'MESSAGE_FAILED\n')
+                        conn.sendall(b"MESSAGE_FAILED\n")
                         print(f"[SERVER] Falló el envío")
                         
                 except Exception as e:
                     print(f"[SERVER] Error en SEND: {str(e)}")
                     try:
-                        conn.sendall(b'MESSAGE_ERROR\n')
+                        conn.sendall(b"MESSAGE_ERROR\n")
                     except:
                         pass
 
