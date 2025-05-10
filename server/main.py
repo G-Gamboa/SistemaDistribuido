@@ -1,4 +1,5 @@
 import socket
+import time
 import threading
 from auth import verify_user, register_user
 from message_handler import send_message, get_messages
@@ -34,7 +35,7 @@ HOST = config['server']['host']
 PORT = int(config['server']['port'])
 MAX_CONNECTIONS = int(config['server']['max_connections'])
 
-def handle_client(conn, addr):
+def handle_client(self,conn, addr):
     current_user = None
     try:
         log_event("CONNECTION_ATTEMPT", details=f"IP: {addr[0]}")
@@ -149,43 +150,38 @@ def handle_client(conn, addr):
 
             elif command == "GET":
                 if current_user is None:
-                    conn.sendall(b"NEED_LOGIN\n")
+                    conn.sendall(b"NEED_LOGIN\nEND\n")
                     continue
                     
                 try:
                     print(f"[SERVER] Procesando GET para {current_user}")
                     messages = get_messages(current_user)
                     
-                    # Enviar cantidad de mensajes
-                    conn.sendall(str(len(messages)).encode() + b"\n")
+                    # Enviar cantidad de mensajes con delimitador
+                    conn.sendall(f"{len(messages)}\nEND\n".encode())
                     
                     # Esperar confirmación READY
-                    ready = conn.recv(1024).decode().strip()
-                    if ready != "READY":
-                        raise ConnectionError(f"Se esperaba READY, se recibió: {ready}")
+                    ready = self.read_until(conn, b'\nEND\n')
+                    if ready.strip() != "READY":
+                        raise ConnectionError("Protocolo inválido")
                     
-                    # Dentro del manejo del comando GET
+                    # Enviar cada mensaje
                     for msg in messages:
                         try:
-                            formatted = f"{msg['sender']}|{msg['message']}|{msg['time']}"
-                            conn.sendall(formatted.encode() + b"\n")
+                            formatted = f"{msg['sender']}|{msg['message']}|{msg['time']}\nEND\n"
+                            conn.sendall(formatted.encode())
                             
                             # Esperar ACK con timeout
-                            conn.settimeout(3.0)
-                            ack = conn.recv(3).decode().strip()
-                            if ack != "ACK":
-                                print(f"[SERVER] Falta ACK para mensaje {formatted[:50]}...")
-                                break
+                            ack = self.read_until(conn, b'\nEND\n', timeout=5.0)
+                            if ack.strip() != "ACK":
+                                raise ConnectionError("Falta confirmación ACK")
+                                
                         except Exception as e:
                             print(f"[SERVER] Error enviando mensaje: {str(e)}")
-                            conn.sendall(b"ERROR\n")
                             break
-                            
-                    print(f"[SERVER] Mensajes enviados a {current_user}")
-                    
+
                 except Exception as e:
-                    print(f"[ERROR] Error al enviar mensajes: {str(e)}")
-                    conn.sendall(b"ERROR\n")
+                    print(f"[SERVER] Error en GET: {str(e)}")
 
             elif command == "LOGOUT":
                 try:
@@ -219,6 +215,32 @@ def handle_client(conn, addr):
     finally:
         conn.close()
         print(f"[SERVER] Conexión cerrada con {addr}")
+
+
+def read_until(self, conn, delimiter, timeout=5.0):
+    """Lee datos hasta encontrar el delimitador con timeout"""
+    conn.settimeout(timeout)
+    data = b''
+    start_time = time.time()
+    
+    while True:
+        try:
+            chunk = conn.recv(4096)
+            if not chunk:
+                break
+            data += chunk
+            if delimiter in data:
+                break
+            if time.time() - start_time > timeout:
+                raise socket.timeout()
+        except socket.timeout:
+            raise
+        except Exception as e:
+            print(f"[SERVER] Error leyendo datos: {str(e)}")
+            break
+    
+    return data.split(delimiter)[0].decode()
+
 
 def start_server():
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
