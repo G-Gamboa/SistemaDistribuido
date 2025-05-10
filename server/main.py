@@ -164,27 +164,33 @@ def handle_client(conn, addr):
                     if ready != "READY":
                         raise ConnectionError(f"Se esperaba READY, se recibió: {ready}")
                     
-                    # Dentro del manejo del comando GET
+                    # Enviar cada mensaje
                     for msg in messages:
                         try:
                             formatted = f"{msg['sender']}|{msg['message']}|{msg['time']}"
                             conn.sendall(formatted.encode() + b"\n")
                             
                             # Esperar ACK con timeout
-                            conn.settimeout(5.0)  # Aumentar timeout
-                            ack = conn.recv(4).decode().strip()  # Leer 4 bytes para capturar "ACK\n"
+                            conn.settimeout(5.0)
+                            ack = conn.recv(4).decode().strip()
                             if ack != "ACK":
                                 print(f"[SERVER] Falta ACK para mensaje {formatted[:50]}...")
-                                print(f"[SERVER] Recibido: {ack!r}")  # Debug: mostrar lo recibido
                                 break
                         except socket.timeout:
                             print("[SERVER] Timeout esperando ACK")
                             break
                         except Exception as e:
                             print(f"[SERVER] Error enviando mensaje: {str(e)}")
-                            conn.sendall(b"ERROR\n")
                             break
-                            
+                    
+                    # Esperar confirmación final del cliente
+                    conn.settimeout(10.0)  # Dar más tiempo para la confirmación final
+                    final_ack = conn.recv(1024).decode().strip()
+                    if final_ack == "GET_COMPLETE":
+                        print(f"[SERVER] Cliente confirmó recepción completa de mensajes")
+                    else:
+                        print(f"[SERVER] Confirmación final inesperada: {final_ack}")
+                    
                     print(f"[SERVER] Mensajes enviados a {current_user}")
                     
                 except Exception as e:
