@@ -164,15 +164,22 @@ def handle_client(conn, addr):
                     if ready != "READY":
                         raise ConnectionError(f"Se esperaba READY, se recibió: {ready}")
                     
-                    # Enviar cada mensaje
+                    # Dentro del manejo del comando GET
                     for msg in messages:
-                        formatted = f"{msg['sender']}|{msg['message']}|{msg['time']}"
-                        conn.sendall(formatted.encode() + b"\n")
-                        
-                        # Esperar ACK
-                        ack = conn.recv(3).decode().strip()
-                        if ack != "ACK":
-                            raise ConnectionError("Falta confirmación ACK")
+                        try:
+                            formatted = f"{msg['sender']}|{msg['message']}|{msg['time']}"
+                            conn.sendall(formatted.encode() + b"\n")
+                            
+                            # Esperar ACK con timeout
+                            conn.settimeout(3.0)
+                            ack = conn.recv(3).decode().strip()
+                            if ack != "ACK":
+                                print(f"[SERVER] Falta ACK para mensaje {formatted[:50]}...")
+                                break
+                        except Exception as e:
+                            print(f"[SERVER] Error enviando mensaje: {str(e)}")
+                            conn.sendall(b"ERROR\n")
+                            break
                             
                     print(f"[SERVER] Mensajes enviados a {current_user}")
                     
