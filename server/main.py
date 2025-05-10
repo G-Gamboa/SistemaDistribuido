@@ -1,5 +1,4 @@
 import socket
-import time
 import threading
 from auth import verify_user, register_user
 from message_handler import send_message, get_messages
@@ -150,38 +149,43 @@ def handle_client(conn, addr):
 
             elif command == "GET":
                 if current_user is None:
-                    conn.sendall(b"NEED_LOGIN\nEND\n")
+                    conn.sendall(b"NEED_LOGIN\n")
                     continue
                     
                 try:
                     print(f"[SERVER] Procesando GET para {current_user}")
                     messages = get_messages(current_user)
                     
-                    # Enviar cantidad de mensajes con delimitador
-                    conn.sendall(f"{len(messages)}\nEND\n".encode())
+                    # Enviar cantidad de mensajes
+                    conn.sendall(str(len(messages)).encode() + b"\n")
                     
                     # Esperar confirmación READY
-                    ready = read_until(conn, b'\nEND\n')
-                    if ready.strip() != "READY":
-                        raise ConnectionError("Protocolo inválido")
+                    ready = conn.recv(1024).decode().strip()
+                    if ready != "READY":
+                        raise ConnectionError(f"Se esperaba READY, se recibió: {ready}")
                     
-                    # Enviar cada mensaje
+                    # Dentro del manejo del comando GET
                     for msg in messages:
                         try:
-                            formatted = f"{msg['sender']}|{msg['message']}|{msg['time']}\nEND\n"
-                            conn.sendall(formatted.encode())
+                            formatted = f"{msg['sender']}|{msg['message']}|{msg['time']}"
+                            conn.sendall(formatted.encode() + b"\n")
                             
                             # Esperar ACK con timeout
-                            ack = read_until(conn, b'\nEND\n', timeout=5.0)
-                            if ack.strip() != "ACK":
-                                raise ConnectionError("Falta confirmación ACK")
-                                
+                            conn.settimeout(3.0)
+                            ack = conn.recv(3).decode().strip()
+                            if ack != "ACK":
+                                print(f"[SERVER] Falta ACK para mensaje {formatted[:50]}...")
+                                break
                         except Exception as e:
                             print(f"[SERVER] Error enviando mensaje: {str(e)}")
+                            conn.sendall(b"ERROR\n")
                             break
-
+                            
+                    print(f"[SERVER] Mensajes enviados a {current_user}")
+                    
                 except Exception as e:
-                    print(f"[SERVER] Error en GET: {str(e)}")
+                    print(f"[ERROR] Error al enviar mensajes: {str(e)}")
+                    conn.sendall(b"ERROR\n")
 
             elif command == "LOGOUT":
                 try:
@@ -215,32 +219,6 @@ def handle_client(conn, addr):
     finally:
         conn.close()
         print(f"[SERVER] Conexión cerrada con {addr}")
-
-
-    def read_until(self, conn, delimiter, timeout=5.0):
-        """Lee datos hasta encontrar el delimitador con timeout"""
-        conn.settimeout(timeout)
-        data = b''
-        start_time = time.time()
-        
-        while True:
-            try:
-                chunk = conn.recv(4096)
-                if not chunk:
-                    break
-                data += chunk
-                if delimiter in data:
-                    break
-                if time.time() - start_time > timeout:
-                    raise socket.timeout()
-            except socket.timeout:
-                raise
-            except Exception as e:
-                print(f"[SERVER] Error leyendo datos: {str(e)}")
-                break
-        
-        return data.split(delimiter)[0].decode()
-
 
 def start_server():
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
