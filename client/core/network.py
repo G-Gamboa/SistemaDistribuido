@@ -179,40 +179,44 @@ class NetworkClient:
 
     def send_message(self, recipient: str, message: str) -> bool:
         """Envía mensajes con manejo robusto de conexión y sesión"""
-        max_retries = 3
+        max_retries = 2  # Reducimos a 2 intentos
         for attempt in range(max_retries):
             try:
-                # Verificar y restablecer conexión
+                # Verificar conexión
                 if not self.connected or not self._validate_connection():
                     if not self.reconnect():
                         raise ConnectionError("No se pudo conectar al servidor")
                 
-                # 1. Enviar comando SEND
+                # 1. Enviar comando SEND con \n final
                 self.socket.sendall(b'SEND\n')
+                print("[DEBUG] Comando SEND enviado")
                 
                 # 2. Esperar READY del servidor
-                response = self._receive_response()
+                response = self._receive_response().strip()
+                print(f"[DEBUG] Respuesta del servidor: {response}")
                 
                 if response == "NEED_LOGIN":
                     raise ConnectionError("Sesión expirada, requiere reautenticación")
                 elif response != "READY":
                     raise ConnectionError(f"Protocolo inválido, esperaba READY, obtuve: {response}")
                 
-                # 3. Enviar destinatario y mensaje juntos
-                payload = f"{recipient}\n{message}"
-                self.socket.sendall(payload.encode('utf-8') + b'\n')
+                # 3. Enviar destinatario y mensaje en formato estricto
+                payload = f"{recipient}\n{message}\n".encode('utf-8')  # Aseguramos doble \n
+                self.socket.sendall(payload)
+                print(f"[DEBUG] Payload enviado: {payload.decode().strip()}")
                 
                 # 4. Recibir confirmación final
-                final_response = self._receive_response()
+                final_response = self._receive_response().strip()
+                print(f"[DEBUG] Respuesta final: {final_response}")
                 
                 return final_response == "MESSAGE_SENT"
                     
-            except ConnectionError as e:
-                print(f"[NETWORK] Intento {attempt + 1} fallido: {str(e)}")
+            except Exception as e:
+                print(f"[ERROR] Intento {attempt+1} fallido: {str(e)}")
                 if attempt == max_retries - 1:
-                    raise
-                time.sleep(1)
-                continue
+                    return False
+                time.sleep(0.5)
+        return False
 
     def get_messages(self) -> list:
         try:
