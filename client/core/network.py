@@ -220,26 +220,28 @@ class NetworkClient:
 
     def get_messages(self) -> list:
         try:
-            # Enviar comando GET
-            self.socket.sendall(b"GET\n")
-            print("[CLIENT] Comando GET enviado")
+            # Configurar timeout largo para toda la operación
+            self.socket.settimeout(30.0)
             
-            # Recibir cantidad de mensajes
-            msg_count = int(self.socket.recv(1024).decode().strip())
-            print(f"[CLIENT] Mensajes por recibir: {msg_count}")
+            # 1. Enviar comando GET
+            self.socket.sendall(b"GET\n")
+            
+            # 2. Recibir cantidad de mensajes
+            msg_count = int(self._receive_line())
+            print(f"[CLIENT] Recibiendo {msg_count} mensajes")
             
             messages = []
             if msg_count > 0:
-                # Enviar READY para confirmar
+                # 3. Enviar confirmación READY
                 self.socket.sendall(b"READY\n")
-                print("[CLIENT] Confirmación READY enviada")
                 
-                # Recibir cada mensaje
+                # 4. Recibir cada mensaje con ACK
                 for _ in range(msg_count):
-                    msg_data = self.socket.recv(4096).decode().strip()
-                    print(f"[CLIENT] Mensaje recibido: {msg_data[:50]}...")  # Muestra parte del mensaje
+                    msg_data = self._receive_line()
+                    if not msg_data:
+                        break
                     
-                    # Enviar ACK por cada mensaje
+                    # Enviar ACK inmediatamente
                     self.socket.sendall(b"ACK\n")
                     
                     # Parsear mensaje
@@ -251,12 +253,26 @@ class NetworkClient:
                             'time': parts[2]
                         })
             
+            # 5. Confirmar finalización
+            self.socket.sendall(b"GET_COMPLETE\n")
             return messages
             
+        except socket.timeout:
+            print("[CLIENT] Timeout en get_messages")
+            return []
         except Exception as e:
-            print(f"[CLIENT] Error al obtener mensajes: {str(e)}")
+            print(f"[CLIENT] Error en get_messages: {str(e)}")
             return []
 
+    def _receive_line(self):
+        """Helper para recibir líneas completas"""
+        buffer = []
+        while True:
+            data = self.socket.recv(1)
+            if not data or data == b'\n':
+                return b''.join(buffer).decode()
+            buffer.append(data)
+    
     def reconnect(self):
         """Reconecta si la conexión está cerrada"""
         try:
