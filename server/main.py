@@ -153,48 +153,46 @@ def handle_client(conn, addr):
                     continue
                     
                 try:
-                    print(f"[SERVER] Procesando GET para {current_user}")
                     messages = get_messages(current_user)
                     
-                    # Enviar cantidad de mensajes
+                    # 1. Enviar cantidad de mensajes
                     conn.sendall(str(len(messages)).encode() + b"\n")
                     
-                    # Esperar confirmación READY
+                    # 2. Esperar READY del cliente
                     ready = conn.recv(1024).decode().strip()
                     if ready != "READY":
-                        raise ConnectionError(f"Se esperaba READY, se recibió: {ready}")
+                        raise ConnectionError("Protocolo inválido")
                     
-                    # Enviar cada mensaje
+                    # 3. Enviar mensajes con espera de ACK
                     for msg in messages:
-                        try:
-                            formatted = f"{msg['sender']}|{msg['message']}|{msg['time']}"
-                            conn.sendall(formatted.encode() + b"\n")
-                            
-                            # Esperar ACK con timeout
-                            conn.settimeout(5.0)
-                            ack = conn.recv(4).decode().strip()
-                            if ack != "ACK":
-                                print(f"[SERVER] Falta ACK para mensaje {formatted[:50]}...")
-                                break
-                        except socket.timeout:
-                            print("[SERVER] Timeout esperando ACK")
-                            break
-                        except Exception as e:
-                            print(f"[SERVER] Error enviando mensaje: {str(e)}")
-                            break
+                        formatted = f"{msg['sender']}|{msg['message']}|{msg['time']}"
+                        conn.sendall(formatted.encode() + b"\n")
+                        
+                        # Esperar ACK con reintentos
+                        ack_received = False
+                        for _ in range(3):
+                            try:
+                                conn.settimeout(5.0)
+                                ack = conn.recv(4).decode().strip()
+                                if ack == "ACK":
+                                    ack_received = True
+                                    break
+                            except socket.timeout:
+                                continue
+                        
+                        if not ack_received:
+                            raise ConnectionError("Fallo en ACK")
                     
-                    # Esperar confirmación final del cliente
-                    conn.settimeout(10.0)  # Dar más tiempo para la confirmación final
-                    final_ack = conn.recv(1024).decode().strip()
-                    if final_ack == "GET_COMPLETE":
-                        print(f"[SERVER] Cliente confirmó recepción completa de mensajes")
-                    else:
-                        print(f"[SERVER] Confirmación final inesperada: {final_ack}")
+                    # 4. Esperar confirmación final GET_END
+                    conn.settimeout(10.0)
+                    end_signal = conn.recv(1024).decode().strip()
+                    if end_signal != "GET_END":
+                        print(f"[SERVER] Señal final inesperada: {end_signal}")
                     
-                    print(f"[SERVER] Mensajes enviados a {current_user}")
+                    print(f"[SERVER] Transferencia completada para {current_user}")
                     
                 except Exception as e:
-                    print(f"[ERROR] Error al enviar mensajes: {str(e)}")
+                    print(f"[SERVER] Error en GET: {str(e)}")
                     conn.sendall(b"ERROR\n")
 
             elif command == "LOGOUT":
