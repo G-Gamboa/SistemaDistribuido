@@ -2,11 +2,13 @@ import sys
 import os
 from pathlib import Path
 import logging
+import tkinter as tk
 
 sys.path.append(str(Path(__file__).parent.parent))
 from client.core.auth import AuthManager
 from client.core.network import NetworkClient
 from client.ui.cli import CLInterface
+from client.ui.gui import ChatGUI
 from client.config.config import load_config
 
 def setup_logging():
@@ -22,7 +24,7 @@ def setup_logging():
         encoding='utf-8'  # Solo para Python 3.9+
     )
 
-def main():
+def mainCLI():
     # Configuración inicial
     setup_logging()
     logger = logging.getLogger(__name__)
@@ -51,5 +53,11 @@ def main():
             network_client.disconnect()
         logger.info("Cliente terminado")
 
+def mainGUI():
+    root = tk.Tk()
+    app = ChatGUI(root)
+    root.mainloop()
+
 if __name__ == "__main__":
-    main()
+    mainGUI()
+    #mainCLI()
